@@ -1,0 +1,174 @@
+---
+title: "R Shiny App Connected to MongoDB"
+author: "Flemming Wu"
+runtime: shiny
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo=F, warning=F)
+```
+
+```{r message=F}
+library(mongolite)
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(shiny)
+library(tibble)
+```
+
+```{r connect to mongodb}
+connection_string <- paste0("mongodb+srv://flemmingw:", readLines(con = "app.config"), "@clustertrgn.hepxssr.mongodb.net/?retryWrites=true&w=majority")
+prca <- mongo(collection="prca_msk", db="trgn516final", url=connection_string)
+```
+
+```{r, eval=F, include=F}
+prca$count(query = '{"Race Category": "White"}')
+```
+
+```{r}
+docs <- prca$find()
+df <- as.data.frame(docs)
+```
+
+```{r, eval=F, include=F}
+head(df)
+```
+
+```{r 8q arm shiny app}
+ui <- fluidPage(
+    checkboxGroupInput("checkGroup", 
+                       "Choose Race Category to View", 
+                       choices = c("Asian", "Black", "White"), 
+                       selected = c("Asian", "Black", "White")),
+    plotOutput("plot")
+)
+
+server <- function(input, output) {
+    output$plot <- renderPlot({
+      df %>%
+        filter(`Race Category` %in% input$checkGroup) %>%
+        ggplot(aes(x = `8q arm`, fill = `Race Category`)) + 
+        geom_bar(stat = "count", position = "dodge") +
+        theme_bw() +
+        theme(
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank()
+        ) +
+        geom_text(aes(label = after_stat(count)), stat = "count", vjust = -1, position = position_dodge(.9), size = 3)
+    })
+}
+
+shinyApp(ui, server, options = list(height = 1000))
+```
+
+```{r TMB plot}
+df %>%
+  ggplot(aes(y = `TMB (nonsynonymous)`, x = `Race Category`, fill = `Race Category`)) +
+  geom_violin() +
+  theme_bw() +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank()
+  )
+```
+
+```{r age at diagnosis vs fraction genome altered}
+df %>%
+  ggplot(aes(x = `Age at Diagnosis`, y = `Fraction Genome Altered`, color = `Race Category`)) +
+  geom_jitter(alpha = 0.7)
+```
+
+```{r smoking vs fraction genome altered by race}
+df %>%
+  ggplot(aes(y = `Fraction Genome Altered`, x = `Smoking`, fill = `Race Category`)) +
+  geom_boxplot()
+```
+
+```{r disease extent vs fraction genome altered}
+ui <- fluidPage(
+  checkboxGroupInput("checkGroup", "Choose Disease Extent to View", choices = unique(df$`Disease Extent At Time IMPACT Was Sent`),
+                     selected = unique(df$`Disease Extent At Time IMPACT Was Sent`)),
+  plotOutput("plot")
+)
+
+server <- function(input, output) {
+  output$plot <- renderPlot({
+    df %>%
+      filter(`Disease Extent At Time IMPACT Was Sent` %in% input$checkGroup) %>%
+      ggplot(aes(y = `Disease Extent At Time IMPACT Was Sent`, x = `Fraction Genome Altered`, fill = `Disease Extent At Time IMPACT Was Sent`)) +
+      geom_boxplot() + 
+      theme(
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank()
+        ) +
+      theme_bw() +
+      theme(legend.position = "none")
+  })
+}
+
+shinyApp(ui, server)
+```
+
+
+```{r age at diagnosis shiny app}
+ui <- fluidPage(
+  sliderInput("slider", label = h3("Select Bins"), min = 0, max = 200, value = 100, step = 10),
+  plotOutput("plot"),
+  actionButton("resetBtn", "Reset Bins")
+)
+
+server <- function(input, output){
+  output$plot <- renderPlot({
+    df %>%
+      ggplot(aes(x = `Age at Diagnosis`, fill = `Race Category`)) +
+      geom_histogram(bins = input$slider) +
+      theme_bw() +
+      theme(
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank()
+      )
+  })
+  
+  observeEvent(input$resetBtn, {
+    updateSliderInput(inputId = "slider", value = 100)
+  })
+}
+
+shinyApp(ui, server, options = list(height = 800))
+```
+
+```{r copy number alterations table}
+cna <- df[,27:ncol(df)]
+
+tab <- data.frame(matrix(NA, ncol=1, nrow=540))[-1]
+rownames(tab) <- names(cna)
+tab$Alterations <- colSums(cna != 0) %>% as.data.frame()
+tab$Neutral <- colSums(cna == 0) %>% as.data.frame()
+tab$Gains <- colSums(cna > 0) %>% as.data.frame()
+tab$Deletions <- colSums(cna < 0) %>% as.data.frame()
+
+tab <- arrange(tab, desc(Alterations)) %>% rownames_to_column("Gene")
+
+shinyApp(
+  
+  ui <- fluidPage(
+    numericInput("rows", "How many rows?", 20),
+    tableOutput("printData")
+  ),
+  
+  server <- function(input, output) {
+    output$printData = renderTable({
+      head(tab, input$rows)
+    }, 
+    digits = 0
+    )
+  },
+  
+  options = list(height = 500)
+)
+```
+
+
+
+
