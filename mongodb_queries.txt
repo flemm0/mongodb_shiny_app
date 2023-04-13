@@ -1,0 +1,152 @@
+# MongoDB Queries
+
+# Query 1: How many alive and deceased patients in each race category?
+
+My first query investigates how many patients are alive or dead in each race category. According to Howlader, N., et al., they found that there are 38 deaths from prostate cancer per 100,000 Black men, which is much higher than the 18 deaths for 100,000 White men. I wrote this query to see if the data in my database reflected this observation of higher death rate from prostate cancer in Black men. Indeed, the percent dead for Black men in this dataset is 40%, whereas the percent dead for White men is 36%. However, a larger sample size would be better in obtaining more confident results.
+
+db.prca_msk.aggregate([
+	{
+		$group : {
+			_id: { "Race Category" : "$Race Category", "Vital Status" : "$Patient's Vital Status" },
+			"count": { $count: { } }
+						 }
+	}
+])
+
+
+[
+  {
+    _id: { 'Race Category': 'Asian', 'Vital Status': 'Alive' },
+    count: 47
+  },
+  {
+    _id: { 'Race Category': 'Black', 'Vital Status': 'Dead' },
+    count: 47
+  },
+  {
+    _id: { 'Race Category': 'Black', 'Vital Status': 'Alive' },
+    count: 118
+  },
+  {
+    _id: { 'Race Category': 'Asian', 'Vital Status': 'Dead' },
+    count: 16
+  },
+  {
+    _id: { 'Race Category': 'White', 'Vital Status': 'Alive' },
+    count: 1350
+  },
+  {
+    _id: { 'Race Category': 'White', 'Vital Status': 'Dead' },
+    count: 491
+  }
+]
+
+
+# Query 2: What is the average age at diagnosis for each race category?
+
+My second query uses the $avg operator to obtain the average age at diagnosis for each race category. I decided to investigate this because it was reported in Hinata et al that data suggests that prostate cancer develops at a younger age in Black men. I wanted to see if this observation is reflected in my database, and indeed the average age at diagnosis for Black men is about 3 years earlier than the average age at diagnosis for both White and Asian men.
+
+db.prca_msk.aggregate([
+	{ $group: { _id: "$Race Category", avg_age_at_diagnosis: { $avg: "$Age at Diagnosis" } } }
+])
+
+[
+  { _id: 'Black', avg_age_at_diagnosis: 59.24424242424242 },
+  { _id: 'White', avg_age_at_diagnosis: 62.784573601303634 },
+  { _id: 'Asian', avg_age_at_diagnosis: 62.67301587301588 }
+]
+
+
+# Query 3: How many alive patients in each race category had advanced cancer stage at time of sequencing? (Metastatic castration-resistant)
+
+My third query is to investigate the cancer staging in the patients. According to Stopsack et al, they found that Asian men see a higher rate of advanced cancer stage during the time of obtaining samples. Since there were many different categories for the cancer staging, I wanted to query for “metastatic castration-resistant”. I chose this category because in Henríquez, Iván et al., the authors state that metastatic castration-resistant prostate cancer (mCRPC) has a poor long-term prognosis and short overall survival. My query revealed that Asian men did see high numbers of mCRPC, relative to their representation in the dataset. There were a total of 63 Asian men in the database, 8 of which were mCRPC. In contrast, there were only 11 Black men that were mCRPC, yet there are 165 in the database.
+
+db.prca_msk.aggregate([
+	{ $match: {
+			"Disease Extent At Time IMPACT Was Sent":  "Metastatic castration-resistant",
+			"Patient's Vital Status" : "Alive"
+	 }
+	},
+	 { $group: {
+      _id: "$Race Category",
+      count: { $sum: 1 }
+  } }
+])
+
+
+[
+  { _id: 'White', count: 114 },
+  { _id: 'Asian', count: 8 },
+  { _id: 'Black', count: 11 }
+]
+
+
+# Query 4: What percentage of patients have 8q arm gain in each race category?
+
+My fourth query aims to connect 8q arm gain with prostate cancer aggressiveness. The chromosome 8q arm contains several genes involved in prostate cancer development and progression. In Steiner, Thomas et al, the authors suggest that gain in 8q arm represents a marker of aggressiveness in prostate cancer. Due to this, I would expect to see a higher rate of 8q arm gains in Asian men, due to their having more advanced stages of cancer at time of sequencing, as found in query 3. I would also expect Black men to see more 8q arm gain, as prostate cancer in Black men is also found to be more aggressive in Black men, compared to White men. Indeed, the query revealed a similar  8q arm gain percentage in Asian and Black men, at around 45%, whereas White men saw a 35% 8q arm gain rate.
+
+db.prca_msk.aggregate([
+  // Get total counts and counts filtered by condition
+{
+	$group: {
+      _id: "$Race Category",
+      total_count: { $sum: 1 },
+      gain_count: { $sum: { $cond: [ { $eq: ["$8q arm", "Gain"] }, 1, 0 ] } }
+			}
+},
+{
+	$project: {
+      _id: 0,
+      race: "$_id",
+      percentage_8q_gain: { $multiply: [ { $divide: [ "$gain_count", "$total_count" ] }, 100 ] }
+		  }
+}
+])
+
+[
+  { race: 'White', percentage_8q_gain: 35.14394350896252 },
+  { race: 'Asian', percentage_8q_gain: 44.44444444444444 },
+  { race: 'Black', percentage_8q_gain: 46.666666666666664 }
+]
+
+
+# Query 5: What percentage of each race category have AR and BRAF mutations?
+
+In my fifth query, I aimed to investigate specific gene alteration differences between the different race groups. In Stopsack et al, the authors cite many genes being altered at different rates amongst the different race categories, of which include AR and BRAF. Interestingly, I found that in terms of copy number alterations, White men saw the highest percentage of BRAF alterations, with 0% observed in Black and Asian men. Additionally, the query showed that AR alterations are highest in Asian men, followed by Black and then White.
+
+db.prca_msk.aggregate([
+{
+	$group: {
+      _id: "$Race Category",
+      total_count: { $sum: 1 },
+      AR_alt_count: { $sum: { $cond: [ { $ne: ["$AR", 0] }, 1, 0 ] } },
+      BRAF_alt_count: { $sum: { $cond: [ { $ne: ["$BRAF", 0] }, 1, 0 ] } }
+			}
+},
+{
+	$project: {
+      _id: 0,
+      race: "$_id",
+      percentage_AR_altered: { $multiply: [ { $divide: [ "$AR_alt_count", "$total_count" ] }, 100 ] },
+      percentage_BRAF_altered: { $multiply: [ { $divide: [ "$BRAF_alt_count", "$total_count" ] }, 100 ] }
+		  }
+}
+])
+
+[
+  {
+    race: 'Black',
+    percentage_AR_altered: 12.121212121212121,
+    percentage_BRAF_altered: 0
+  },
+  {
+    race: 'Asian',
+    percentage_AR_altered: 19.047619047619047,
+    percentage_BRAF_altered: 0
+  },
+  {
+    race: 'White',
+    percentage_AR_altered: 10.429114611624117,
+    percentage_BRAF_altered: 0.27159152634437805
+  }
+]
