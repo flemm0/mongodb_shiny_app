@@ -2,6 +2,9 @@
 title: "R Shiny App Connected to MongoDB"
 author: "Flemming Wu"
 runtime: shiny
+output:
+  html_document:
+    theme: !expr bslib::bs_theme(bootswatch = "default", bg = "rgb(249, 250, 236)", font_scale = NULL, fg = "#000")
 ---
 
 ```{r setup, include=F}
@@ -15,6 +18,10 @@ library(ggplot2)
 library(ggthemes)
 library(shiny)
 library(tibble)
+library(DT)
+library(RColorBrewer)
+library(bslib)
+library(shinythemes)
 ```
 
 ```{r connect to mongodb}
@@ -22,26 +29,48 @@ connection_string <- paste0("mongodb+srv://flemmingw:", readLines(con = "app.con
 prca <- mongo(collection="prca_msk", db="trgn516final", url=connection_string)
 ```
 
-```{r, eval=F, include=F}
-prca$count(query = '{"Race Category": "White"}')
-```
-
 ```{r}
+# prca$count(query = '{"Race Category": "White"}')
 docs <- prca$find()
 df <- as.data.frame(docs)
 ```
 
-```{r, eval=F, include=F}
-head(df)
+```{r view clinical data}
+df_clin <- df[,names(df)[1:26]]
+
+selected <- c("Patient ID", "8q arm", "Age at Diagnosis", "Age at Procurement", "Disease Extent At Time IMPACT Was Sent",
+              "Fraction Genome Altered", "Gleason Grade", "Mutation Count", "Prostate-specific antigen", "Race Category")
+
+ui <- fluidPage(
+  titlePanel("View Clinical Data"),
+  theme = shinytheme("united"),
+  checkboxGroupInput("checkGroup", "Choose Variables to View",
+                     choices = names(df_clin), 
+                     selected = selected,
+                     inline = TRUE),
+  DT::dataTableOutput("table")
+)
+
+server <- function(input, output){
+  output$table <- DT::renderDataTable({
+    df_clin[,names(df_clin) %in% input$checkGroup]
+  })
+}
+
+shinyApp(ui, server, options = list(height = 1300))
 ```
+
 
 ```{r 8q arm shiny app}
 ui <- fluidPage(
-    checkboxGroupInput("checkGroup", 
-                       "Choose Race Category to View", 
-                       choices = c("Asian", "Black", "White"), 
-                       selected = c("Asian", "Black", "White")),
-    plotOutput("plot")
+  titlePanel("8q arm Status by Race Category"),
+  theme = shinytheme("united"),
+  sidebarLayout(
+    sidebarPanel(
+      checkboxGroupInput("checkGroup", "Choose Race Category to View", choices = unique(df$`Race Category`), selected = unique(df$`Race Category`))
+    ),
+    mainPanel(plotOutput("plot"))
+  )
 )
 
 server <- function(input, output) {
@@ -55,39 +84,87 @@ server <- function(input, output) {
           panel.grid.major.x = element_blank(),
           panel.grid.minor.x = element_blank()
         ) +
-        geom_text(aes(label = after_stat(count)), stat = "count", vjust = -1, position = position_dodge(.9), size = 3)
+        geom_text(aes(label = after_stat(count)), stat = "count", vjust = -1, position = position_dodge(.9), size = 3) +
+        scale_fill_brewer(palette = "Paired")
     })
 }
 
-shinyApp(ui, server, options = list(height = 1000))
+shinyApp(ui, server, options = list(height = 600))
 ```
 
-```{r TMB plot}
-df %>%
-  ggplot(aes(y = `TMB (nonsynonymous)`, x = `Race Category`, fill = `Race Category`)) +
-  geom_violin() +
-  theme_bw() +
-  theme(
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor.x = element_blank()
-  )
-```
+```{r scatterplot}
+choices <- c("Age at Diagnosis", "Fraction Genome Altered", "Prostate-specific antigen", "Mutation Count", "TMB (nonsynonymous)")
 
-```{r age at diagnosis vs fraction genome altered}
-df %>%
-  ggplot(aes(x = `Age at Diagnosis`, y = `Fraction Genome Altered`, color = `Race Category`)) +
-  geom_jitter(alpha = 0.7)
+ui <- fluidPage(
+  titlePanel("Scatterplot Visualizations"),
+  theme = shinytheme("united"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("checkBox1", "Select x-axis", choices = choices, selected = "Age at Diagnosis"),
+      selectInput("checkBox2", "Select y-axis", choices = choices, selected = "Fraction Genome Altered"),
+      checkboxGroupInput("checkGroup", "Choose Race Category to View", choices = unique(df$`Race Category`), selected = unique(df$`Race Category`))
+    ),
+    mainPanel(plotOutput("plot"))
+  )  
+)
+
+server <- function(input, output) {
+  output$plot <- renderPlot({
+    df %>%
+      filter(`Race Category` %in% input$checkGroup) %>%
+      ggplot(aes(x = .data[[input$checkBox1]], y = .data[[input$checkBox2]], color = `Race Category`)) +
+      geom_jitter(alpha = 0.7) +
+      scale_color_brewer(palette = "Paired") +
+      theme_bw()
+  })
+}
+
+shinyApp(ui, server, options = list(height = 600))
 ```
 
 ```{r smoking vs fraction genome altered by race}
-df %>%
-  ggplot(aes(y = `Fraction Genome Altered`, x = `Smoking`, fill = `Race Category`)) +
-  geom_boxplot()
+ui <- fluidPage(
+  titlePanel("Smoking Status vs Fraction Genome Altered"),
+  theme = shinytheme("united"),
+  sidebarLayout(
+    sidebarPanel(
+      checkboxGroupInput("checkGroup1", 
+                     "Choose Race Category to View", 
+                     choices = unique(df$`Race Category`), 
+                     selected = unique(df$`Race Category`)),
+      checkboxGroupInput("checkGroup2", 
+                     "Choose Smoking Category to View", 
+                     choices = unique(df$Smoking)[!is.na(unique(df$Smoking))], 
+                     selected = unique(df$Smoking)[!is.na(unique(df$Smoking))])
+    ),
+    mainPanel(
+      plotOutput("plot")
+    )
+  )
+)
+
+server <- function(input, output) {
+  output$plot <- renderPlot({
+    df %>%
+      filter(`Race Category` %in% input$checkGroup1) %>%
+      filter(`Smoking` %in% input$checkGroup2) %>%
+      ggplot(aes(x = `Smoking`, y = `Fraction Genome Altered`, fill = `Race Category`)) +
+      geom_boxplot() +
+      theme_bw() +
+      theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) +
+      scale_fill_brewer(palette = "Paired")
+  })
+}
+
+shinyApp(ui, server, options = list(height = 600))
 ```
 
 ```{r disease extent vs fraction genome altered}
 ui <- fluidPage(
-  checkboxGroupInput("checkGroup", "Choose Disease Extent to View", choices = unique(df$`Disease Extent At Time IMPACT Was Sent`),
+  titlePanel("Disease Extent vs Fraction Genome Altered"),
+  theme = shinytheme("united"),
+  checkboxGroupInput("checkGroup", "Choose Disease Extent to View", 
+                     choices = unique(df$`Disease Extent At Time IMPACT Was Sent`),
                      selected = unique(df$`Disease Extent At Time IMPACT Was Sent`)),
   plotOutput("plot")
 )
@@ -103,31 +180,40 @@ server <- function(input, output) {
         panel.grid.minor.x = element_blank()
         ) +
       theme_bw() +
-      theme(legend.position = "none")
+      theme(legend.position = "none") +
+      scale_fill_brewer(palette = "Set2")
   })
 }
 
-shinyApp(ui, server)
+shinyApp(ui, server, options = list(height = 800))
 ```
-
 
 ```{r age at diagnosis shiny app}
 ui <- fluidPage(
-  sliderInput("slider", label = h3("Select Bins"), min = 0, max = 200, value = 100, step = 10),
-  plotOutput("plot"),
-  actionButton("resetBtn", "Reset Bins")
+  titlePanel("Age at Diagnosis by Race Category"),
+  theme = shinytheme("united"),
+  sidebarLayout(
+    sidebarPanel(
+        sliderInput("slider", label = h3("Select Bins"), min = 0, max = 200, value = 100, step = 10),
+        checkboxGroupInput("checkGroup", "Choose Race Category to View", choices = unique(df$`Race Category`), selected = unique(df$`Race Category`)),
+        actionButton("resetBtn", "Reset Bins")
+    ),
+    mainPanel(plotOutput("plot"))
+  )
 )
 
 server <- function(input, output){
   output$plot <- renderPlot({
     df %>%
+      filter(`Race Category` %in% input$checkGroup) %>%
       ggplot(aes(x = `Age at Diagnosis`, fill = `Race Category`)) +
-      geom_histogram(bins = input$slider) +
+      geom_histogram(bins = input$slider, position = "identity", alpha = 0.4) +
       theme_bw() +
       theme(
         panel.grid.major.x = element_blank(),
         panel.grid.minor.x = element_blank()
-      )
+      ) +
+      scale_fill_brewer(palette = "Paired")
   })
   
   observeEvent(input$resetBtn, {
@@ -135,7 +221,7 @@ server <- function(input, output){
   })
 }
 
-shinyApp(ui, server, options = list(height = 800))
+shinyApp(ui, server, options = list(height = 600))
 ```
 
 ```{r copy number alterations table}
@@ -148,27 +234,13 @@ tab$Neutral <- colSums(cna == 0) %>% as.data.frame()
 tab$Gains <- colSums(cna > 0) %>% as.data.frame()
 tab$Deletions <- colSums(cna < 0) %>% as.data.frame()
 
-tab <- arrange(tab, desc(Alterations)) %>% rownames_to_column("Gene")
 
-shinyApp(
-  
-  ui <- fluidPage(
-    numericInput("rows", "How many rows?", 20),
-    tableOutput("printData")
-  ),
-  
-  server <- function(input, output) {
-    output$printData = renderTable({
-      head(tab, input$rows)
-    }, 
-    digits = 0
-    )
-  },
-  
-  options = list(height = 500)
-)
+ui <- fluidPage(titlePanel("Copy Number Alterations Summary Table"), DT::dataTableOutput("table"), theme = shinytheme("united"))
+
+server <- function(input, output) {
+  output$table <- DT::renderDataTable({tab})
+}
+
+shinyApp(ui, server, options = list(height = 1300))
 ```
-
-
-
 
