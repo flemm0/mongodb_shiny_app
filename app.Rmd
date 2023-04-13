@@ -1,11 +1,13 @@
 ---
-title: "R Shiny App Connected to MongoDB"
+title: "Data-Driven Exploration of Racial Differences in Prostate Cancer"
 author: "Flemming Wu"
 runtime: shiny
 output:
   html_document:
     theme: !expr bslib::bs_theme(bootswatch = "default", bg = "rgb(249, 250, 236)", font_scale = NULL, fg = "#000")
 ---
+
+#### Link to GitHub [repo](https://github.com/flemm0/mongodb_shiny_app)
 
 ```{r setup, include=F}
 knitr::opts_chunk$set(echo=F, warning=F)
@@ -29,7 +31,7 @@ connection_string <- paste0("mongodb+srv://flemmingw:", readLines(con = "app.con
 prca <- mongo(collection="prca_msk", db="trgn516final", url=connection_string)
 ```
 
-```{r}
+```{r query entire collection}
 # prca$count(query = '{"Race Category": "White"}')
 docs <- prca$find()
 df <- as.data.frame(docs)
@@ -42,7 +44,7 @@ selected <- c("Patient ID", "8q arm", "Age at Diagnosis", "Age at Procurement", 
               "Fraction Genome Altered", "Gleason Grade", "Mutation Count", "Prostate-specific antigen", "Race Category")
 
 ui <- fluidPage(
-  titlePanel("View Clinical Data"),
+  titlePanel("Table 1: Clinical Data"),
   theme = shinytheme("united"),
   checkboxGroupInput("checkGroup", "Choose Variables to View",
                      choices = names(df_clin), 
@@ -60,10 +62,11 @@ server <- function(input, output){
 shinyApp(ui, server, options = list(height = 1300))
 ```
 
+The first table simply displays all of the clinical data stored in the MongoDB database.
 
 ```{r 8q arm shiny app}
 ui <- fluidPage(
-  titlePanel("8q arm Status by Race Category"),
+  titlePanel("Table 2: 8q arm Status by Race Category"),
   theme = shinytheme("united"),
   sidebarLayout(
     sidebarPanel(
@@ -92,11 +95,13 @@ server <- function(input, output) {
 shinyApp(ui, server, options = list(height = 600))
 ```
 
+The first figure displays a bar plot that counts each possible value of the 8q arm status (gain, loss, neutral, or not called). From the figure, it can be seen that 8q arm gain in White patients is less common than it is for Black or Asian patients. Both Black and Asian patients have an equal amount of observations in the gain and neutral category, whereas for White patients there are only 60% as many patients in the gain category compared to the neutral category.
+
 ```{r scatterplot}
 choices <- c("Age at Diagnosis", "Fraction Genome Altered", "Prostate-specific antigen", "Mutation Count", "TMB (nonsynonymous)")
 
 ui <- fluidPage(
-  titlePanel("Scatterplot Visualizations"),
+  titlePanel("Figure 2: Scatterplot Visualizations"),
   theme = shinytheme("united"),
   sidebarLayout(
     sidebarPanel(
@@ -122,9 +127,11 @@ server <- function(input, output) {
 shinyApp(ui, server, options = list(height = 600))
 ```
 
+The second figure is an interactive scatterplot tool that allows for the plotting of various continuous variables in the dataset against each other in order to reveal any patterns or outliers. The points in the scatterplots are also colored by race category. The default setting is to plot age at diagnosis against fraction genome altered, from which the user can see that there is no clear pattern, suggesting that age at diagnosis and fraction genome altered are not very correlated. Another aspect of the data that is revealed in this figure is that the variable TMB (nonsynonymous), mutation count, and prostate-specific antigen are highly skewed, with a few observations having very high values.
+
 ```{r smoking vs fraction genome altered by race}
 ui <- fluidPage(
-  titlePanel("Smoking Status vs Fraction Genome Altered"),
+  titlePanel("Figure 3: Smoking Status vs Fraction Genome Altered"),
   theme = shinytheme("united"),
   sidebarLayout(
     sidebarPanel(
@@ -159,9 +166,11 @@ server <- function(input, output) {
 shinyApp(ui, server, options = list(height = 600))
 ```
 
+The third figure displays a grouped boxplot, which visualizes the relationship between smoking and the fraction genome altered, grouped by race category. From this figure, it can be observed that White patients have lowest average fraction of genome altered, compared to Black and Asian patients. Furthermore, the average fraction of genome altered is slightly higher in the current smoker and former smoker groups.
+
 ```{r disease extent vs fraction genome altered}
 ui <- fluidPage(
-  titlePanel("Disease Extent vs Fraction Genome Altered"),
+  titlePanel("Figure 4: Disease Extent vs Fraction Genome Altered"),
   theme = shinytheme("united"),
   checkboxGroupInput("checkGroup", "Choose Disease Extent to View", 
                      choices = unique(df$`Disease Extent At Time IMPACT Was Sent`),
@@ -188,9 +197,11 @@ server <- function(input, output) {
 shinyApp(ui, server, options = list(height = 800))
 ```
 
+The fourth figure reveals the relationship between disease extent and the fraction of genome altered. From this figure, it appears that metastatic, variant histology prostate cancer sees the highest average altered genome, followed closely by metastatic castration-resistant. As expected, the localized prostate cancers see the lowest distribution of fraction altered genome, as it is the first stage.
+
 ```{r age at diagnosis shiny app}
 ui <- fluidPage(
-  titlePanel("Age at Diagnosis by Race Category"),
+  titlePanel("Figure 5: Age at Diagnosis by Race Category"),
   theme = shinytheme("united"),
   sidebarLayout(
     sidebarPanel(
@@ -224,6 +235,8 @@ server <- function(input, output){
 shinyApp(ui, server, options = list(height = 600))
 ```
 
+The fifth figure displays a distribution of the age at which patients were diagnosed with prostate cancer, separated by race category. The plot reveals that the age at diagnosis for White and Black patients follow a relatively normal distribution. There is not enough data to say the same for Asian patients. Furthermore, when plotting just the White and Black patients on the histogram, it can be seen that the peak of the age at diagnosis histogram for White patients is slightly higher on the x-axis than for Black patients.
+
 ```{r copy number alterations table}
 cna <- df[,27:ncol(df)]
 
@@ -241,6 +254,8 @@ server <- function(input, output) {
   output$table <- DT::renderDataTable({tab})
 }
 
-shinyApp(ui, server, options = list(height = 1300))
+shinyApp(ui, server, options = list(height = 800))
 ```
+
+The second table summarizes the copy number alteration data in the database, displaying the number of alterations, as well as splitting them into gains and deletions. Again, I used the DT package for displaying the table, allowing for column ordering, a search bar, and max column display customization. From the table, it can be observed that PTEN, AR, and MYC are among the most altered genes in the database, which make sense as these genes are highly implicated in prostate cancer.
 
