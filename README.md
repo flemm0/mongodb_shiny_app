@@ -18,4 +18,4 @@ My objective for this project is to create a database that can store patient-lev
 
 Finally, I used R Shiny to create an interactive data visualization application to allow users to explore aspects of the data. I used the `mongolite` package from R to connect to the MongoDB backend and load data into the R environment. With the R Shiny app, uses can quickly access the data in tabular format, as well as visualize key features such as 8q arm, Age at Diagnosis, etc. with the focus being on the racial differences in some of the clinical and genomic aspects of prostate cancer.
 
-To view the website: [click here](https://github.com/flemm0)
+To view the website: [click here](https://qy27ax-flemming.shinyapps.io/trgn516-finalproject/)
